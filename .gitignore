@@ -1,0 +1,19 @@
+# Ignore config file (contains DB credentials)
+config.php
+
+# Ignore uploaded files (if any)
+public/uploads/
+uploads/
+
+# Ignore IDE settings
+.idea/
+.vscode/
+
+# Ignore log files
+*.log
+
+# Ignore composer libraries (if you ever use them)
+vendor/
+
+# Ignore environment files
+.env

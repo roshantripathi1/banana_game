@@ -92,14 +92,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["email"])) {
                         <th>Difficulty</th>
                         <th>Score</th>
                         <th>Time</th>
-                        <th>Date</th>
+                        
                     </tr>
                     <?php foreach ($userScores as $row): ?>
                         <tr>
                             <td><?= htmlspecialchars($row['difficulty']) ?></td>
                             <td><?= $row['score'] ?></td>
                             <td><?= $row['time_taken'] ?>s</td>
-                            <td><?= $row['created_at'] ?></td>
+                            
                         </tr>
                     <?php endforeach; ?>
                 </table>

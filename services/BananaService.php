@@ -1,55 +1,52 @@
 <?php
 // services/BananaService.php
-// Uses the Banana API: http://marcconrad.com/uob/banana/api.php
-// Only JSON is used in this project.
+// Simple wrapper to call Banana API server-side.
 
 class BananaService
 {
-    // Base Banana API URL
-    private const BASE_URL = "http://marcconrad.com/uob/banana/api.php";
+    // API URL with JSON output
+    private const API_URL = "https://marcconrad.com/uob/banana/api.php?out=json";
 
-    /**
-     * Get puzzle in JSON format.
-     * out=json (default)
-     * base64=yes/no
-     */
-    public static function getPuzzleJson(bool $useBase64 = false): array
+    // Get one puzzle
+    public static function getPuzzle(): array
     {
-        // Prepare query
-        $query = [
-            'out'    => 'json',                        // JSON output
-            'base64' => $useBase64 ? 'yes' : 'no'      // base64 optional
-        ];
-
-        $url = self::BASE_URL . '?' . http_build_query($query);
-
-        // Server-side HTTP call (avoids CORS)
-        $response = @file_get_contents($url);
+        $response = @file_get_contents(self::API_URL);
 
         if ($response === false) {
             return [
-                'answer'       => null,
-                'image_url'    => null,
-                'image_base64' => null,
-                'raw'          => null,
-                'error'        => 'Unable to reach Banana API'
+                'answer'    => null,
+                'image_url' => null,
+                'raw'       => null,
+                'error'     => 'Unable to reach Banana API'
             ];
         }
 
-        // Decode JSON from Banana API
         $data = json_decode($response, true);
 
-        // Extract values as defined by API spec
-        $answer      = isset($data['answer']) ? (int)$data['answer'] : null;
-        $imageUrl    = $data['question'] ?? null;   // URL to puzzle image
-        $imageBase64 = $data['image']   ?? null;    // base64 if requested
+        if (!is_array($data)) {
+            return [
+                'answer'    => null,
+                'image_url' => null,
+                'raw'       => $response,
+                'error'     => 'Invalid JSON from Banana API'
+            ];
+        }
+
+        // API uses "solution"
+        $answer = null;
+        if (isset($data['solution'])) {
+            $answer = (int) $data['solution'];
+        } elseif (isset($data['answer'])) {
+            $answer = (int) $data['answer'];
+        }
+
+        $imageUrl = $data['question'] ?? null;
 
         return [
-            'answer'       => $answer, 
-            'image_url'    => $imageUrl,
-            'image_base64' => $imageBase64,
-            'raw'          => $data,
-            'error'        => null
+            'answer'    => $answer,
+            'image_url' => $imageUrl,
+            'raw'       => $data,
+            'error'     => null
         ];
     }
 }

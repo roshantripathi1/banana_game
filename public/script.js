@@ -1,46 +1,49 @@
-/* ============================================================
-   GLOBAL VARIABLES
-   ============================================================ */
+/* ==========================
+   GLOBAL STATE
+   ========================== */
 
-// Track selected cards
+// Cards
 let firstCard = null;
 let secondCard = null;
 
-// Game state
+// Board state
 let lockBoard = false;
 let matchedPairs = 0;
-let totalPairs = 0;
 
-// Game stats
+// Game values
 let score = 0;
-let timeLeft = 0;
+let totalPairs = 0;
 let timerInterval = null;
+let timeLeft = 0;
+let initialTime = 0;
 
-// Banana API math answer
-let correctMathAnswer = null;
+// Hints
+let hintsLeft = 0;
 
-/* Element references */
-const board = document.getElementById("game-board");
-const scoreDisplay = document.getElementById("score");
-const timerDisplay = document.getElementById("timer");
-const hintsDisplay = document.getElementById("hints");
-const levelDisplay = document.getElementById("level");
+// Math
+let correctMathAnswer = null; // only one answer now
 
-const startButton = document.getElementById("start-game");
+/* ==========================
+   DOM ELEMENTS
+   ========================== */
+
+const board            = document.getElementById("game-board");
+const scoreDisplay     = document.getElementById("score");
+const timerDisplay     = document.getElementById("timer");
+const hintsDisplay     = document.getElementById("hints");
+const levelDisplay     = document.getElementById("level");
+const startButton      = document.getElementById("start-game");
 const difficultySelect = document.getElementById("difficulty");
+const hintButton       = document.getElementById("use-hint");
 
-// Loading overlay variable
 let loadingBox = null;
 
+/* ==========================
+   LOADING OVERLAY
+   ========================== */
 
-/* ============================================================
-   LOADING SPINNER UI
-   ============================================================ */
-
-// Show loading spinner when game starts
 function showLoading() {
     if (loadingBox) return;
-
     loadingBox = document.createElement("div");
     loadingBox.className = "loading-overlay";
     loadingBox.innerHTML = `
@@ -52,7 +55,6 @@ function showLoading() {
     document.body.appendChild(loadingBox);
 }
 
-// Remove loading spinner
 function hideLoading() {
     if (loadingBox) {
         loadingBox.remove();
@@ -60,47 +62,48 @@ function hideLoading() {
     }
 }
 
-
-/* ============================================================
+/* ==========================
    DIFFICULTY SETTINGS
-   ============================================================ */
+   ========================== */
 
 function getDifficultySettings() {
     const diff = difficultySelect.value;
-
-    if (diff === "beginner")
-        return { pairs: 4, time: 40, hints: 2 };
-
-    if (diff === "intermediate")
-        return { pairs: 6, time: 50, hints: 1 };
-
+    if (diff === "beginner")     return { pairs: 4, time: 40, hints: 2 };
+    if (diff === "intermediate") return { pairs: 6, time: 50, hints: 1 };
     return { pairs: 8, time: 60, hints: 0 }; // advanced
 }
 
-
-/* ============================================================
-   START NEW GAME
-   ============================================================ */
+/* ==========================
+   EVENT BINDINGS
+   ========================== */
 
 startButton.addEventListener("click", startNewGame);
 difficultySelect.addEventListener("change", loadLeaderboard);
+if (hintButton) hintButton.addEventListener("click", useHint);
+document.getElementById("submit-math").addEventListener("click", onSubmitMath);
+
+/* ==========================
+   NEW GAME
+   ========================== */
 
 function startNewGame() {
-    showLoading(); // show spinner
+    showLoading();
 
     const settings = getDifficultySettings();
-
-    totalPairs = settings.pairs;
-    timeLeft = settings.time;
+    totalPairs   = settings.pairs;
+    initialTime  = settings.time;
+    timeLeft     = settings.time;
     matchedPairs = 0;
-    score = 0;
+    score        = 0;
+    firstCard    = null;
+    secondCard   = null;
+    lockBoard    = false;
 
-    firstCard = null;
-    secondCard = null;
+    hintsLeft = settings.hints;
 
-    // Update UI
     scoreDisplay.textContent = score;
-    hintsDisplay.textContent = settings.hints;
+    timerDisplay.textContent = timeLeft;
+    hintsDisplay.textContent = hintsLeft;
     levelDisplay.textContent = 1;
     board.innerHTML = "";
 
@@ -108,104 +111,133 @@ function startNewGame() {
     loadLeaderboard();
 }
 
+/* ==========================
+   MATH CHALLENGE (EASIER)
+   ========================== */
 
-/* ============================================================
-   LOAD BANANA API PUZZLE
-   ============================================================ */
-
+// Load Banana puzzle or simple fallback addition
 async function loadMathPuzzle() {
+    const questionEl  = document.getElementById("math-question");
+    const answerInput = document.getElementById("math-answer");
+    const submitBtn   = document.getElementById("submit-math");
+    const imgEl       = document.getElementById("banana-image");
+    const feedbackEl  = document.getElementById("math-feedback");
+
+    // Reset math UI
+    correctMathAnswer      = null;
+    feedbackEl.textContent = "";
+    questionEl.textContent = "Loading Banana puzzle...";
+    answerInput.value      = "";
+    answerInput.disabled   = true;
+    submitBtn.disabled     = true;
+    if (imgEl) imgEl.style.display = "none";
+
     try {
-        // Call our PHP endpoint, which calls Banana API
-        const response = await fetch("banana_api.php");
-        const data = await response.json();
+        const res  = await fetch("banana_api.php");
+        const data = await res.json();
 
-        const questionEl = document.getElementById("math-question");
-        const answerInput = document.getElementById("math-answer");
-        const submitBtn = document.getElementById("submit-math");
-        const imgEl = document.getElementById("banana-image");
+        // If Banana works and answer is numeric → use it
+        if (!data.error && data.answer !== null && typeof data.answer !== "undefined") {
+            correctMathAnswer = data.answer;
 
-        // Handle failure
-        if (data.error) {
-            questionEl.textContent = "Error loading puzzle.";
-            correctMathAnswer = null;
-            if (imgEl) imgEl.style.display = "none";
-            answerInput.disabled = true;
-            submitBtn.disabled = true;
+            questionEl.textContent = "Solve: What is the correct number?";
+            if (imgEl && data.image_url) {
+                imgEl.src = data.image_url;
+                imgEl.style.display = "block";
+            }
+
+            answerInput.disabled = false;
+            submitBtn.disabled   = false;
             return;
         }
 
-        // Store correct answer
-        correctMathAnswer = data.answer;
+        // If Banana failed → easier fallback
+        generateEasyAdditionQuestion();
 
-        // Update description
-        questionEl.textContent = "Look at the image and solve the missing number.";
-
-        // Show image from API
-        if (imgEl && data.image_url) {
-            imgEl.src = data.image_url;
-            imgEl.style.display = "block";
-        }
-
-        // Enable inputs
         answerInput.disabled = false;
-        submitBtn.disabled = false;
+        submitBtn.disabled   = false;
 
-    } catch (err) {
-        console.error("Banana API error:", err);
+    } catch (e) {
+        console.error("Banana API error:", e);
+
+        // Fallback to easy addition
+        generateEasyAdditionQuestion();
+        answerInput.disabled = false;
+        submitBtn.disabled   = false;
     }
 }
 
+// Simple addition 1–10 + 1–10
+function generateEasyAdditionQuestion() {
+    const questionEl = document.getElementById("math-question");
+    const feedbackEl = document.getElementById("math-feedback");
+    const imgEl      = document.getElementById("banana-image");
 
-// Answer submission
-document.getElementById("submit-math").addEventListener("click", () => {
-    const userAnswer = parseInt(document.getElementById("math-answer").value, 10);
+    if (imgEl) imgEl.style.display = "none";
 
-    if (isNaN(userAnswer)) {
-        document.getElementById("math-feedback").textContent = "Enter a number.";
+    const a = Math.floor(Math.random() * 10) + 1;
+    const b = Math.floor(Math.random() * 10) + 1;
+
+    correctMathAnswer = a + b;
+    questionEl.textContent = `Solve: What is ${a} + ${b}?`;
+    feedbackEl.textContent = "(Easy question: small numbers only.)";
+}
+
+// Handle submit for single easy math question
+function onSubmitMath() {
+    const answerInput = document.getElementById("math-answer");
+    const feedbackEl  = document.getElementById("math-feedback");
+    const userAnswer  = parseInt(answerInput.value, 10);
+
+    if (Number.isNaN(userAnswer)) {
+        feedbackEl.textContent = "Please enter a number.";
+        return;
+    }
+
+    if (correctMathAnswer === null) {
+        feedbackEl.textContent = "No puzzle loaded.";
         return;
     }
 
     if (userAnswer === correctMathAnswer) {
-        document.getElementById("math-feedback").textContent = "Correct! +20 points!";
-        score += 20;
+        feedbackEl.textContent = "Correct! +10 points!";
+        score += 10;
+        scoreDisplay.textContent = score;
     } else {
-        document.getElementById("math-feedback").textContent = "Incorrect!";
+        feedbackEl.textContent =
+            `Incorrect. The correct answer was ${correctMathAnswer}.`;
     }
 
-    scoreDisplay.textContent = score;
-});
+    // Save score after answering
+    saveScoreToServer();
 
+    // Disable further changes
+    answerInput.disabled = true;
+    document.getElementById("submit-math").disabled = true;
+}
 
-/* ============================================================
-   START LEVEL: puzzle board + math puzzle
-   ============================================================ */
+/* ==========================
+   LEVEL INIT
+   ========================== */
 
 function startLevel() {
     const symbols = generateSymbols(totalPairs);
     shuffle(symbols);
     createBoard(symbols);
-
-    loadMathPuzzle();   // load Banana puzzle
-    startTimer();       // start game timer
-
-    setTimeout(hideLoading, 600); // remove loading
+    loadMathPuzzle();
+    startTimer();
+    setTimeout(hideLoading, 500);
 }
 
-
-/* ============================================================
-   PUZZLE SYMBOLS
-   ============================================================ */
+/* ==========================
+   SYMBOLS + SHUFFLE
+   ========================== */
 
 function generateSymbols(pairCount) {
-    const emoji = ["🍎", "🍌", "🍇", "🍒", "🍍", "🥑", "🥝", "🍉"];
-    const selected = emoji.slice(0, pairCount);
-    return [...selected, ...selected]; // duplicate for pairs
+    const emojiSet = ["🍎", "🍌", "🍇", "🍒", "🍍", "🥑", "🥝", "🍉"];
+    const selected = emojiSet.slice(0, pairCount);
+    return [...selected, ...selected];
 }
-
-
-/* ============================================================
-   SHUFFLE CARDS
-   ============================================================ */
 
 function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -214,14 +246,12 @@ function shuffle(array) {
     }
 }
 
-
-/* ============================================================
-   CREATE CARD BOARD
-   ============================================================ */
+/* ==========================
+   BOARD + CARDS
+   ========================== */
 
 function createBoard(symbols) {
     board.innerHTML = "";
-
     symbols.forEach(symbol => {
         const card = document.createElement("div");
         card.className = "card hidden";
@@ -237,17 +267,11 @@ function createBoard(symbols) {
     });
 }
 
-
-/* ============================================================
-   CARD CLICK LOGIC
-   ============================================================ */
-
 function handleCardClick(card) {
     if (lockBoard) return;
     if (!card.classList.contains("hidden")) return;
-    if (card === firstCard) return;
+    if (firstCard === card) return;
 
-    // Flip card
     card.classList.remove("hidden");
 
     if (!firstCard) {
@@ -259,28 +283,20 @@ function handleCardClick(card) {
     checkForMatch();
 }
 
-
-/* ============================================================
-   CHECK MATCH (with null safety)
-   ============================================================ */
-
 function checkForMatch() {
     if (!firstCard || !secondCard) return;
 
     const cardA = firstCard;
     const cardB = secondCard;
-
     const isMatch = cardA.dataset.symbol === cardB.dataset.symbol;
 
     if (isMatch) {
         cardA.classList.add("matched");
         cardB.classList.add("matched");
-
         score += 10;
         scoreDisplay.textContent = score;
 
         matchedPairs++;
-
         if (matchedPairs === totalPairs) {
             onPuzzleCompleted();
         }
@@ -289,41 +305,82 @@ function checkForMatch() {
         secondCard = null;
     } else {
         lockBoard = true;
-
         setTimeout(() => {
-            if (!cardA.classList.contains("matched")) cardA.classList.add("hidden");
-            if (!cardB.classList.contains("matched")) cardB.classList.add("hidden");
+            if (cardA && !cardA.classList.contains("matched"))
+                cardA.classList.add("hidden");
+            if (cardB && !cardB.classList.contains("matched"))
+                cardB.classList.add("hidden");
 
             firstCard = null;
             secondCard = null;
             lockBoard = false;
-        }, 700);
+        }, 800);
     }
 }
 
+/* ==========================
+   HINTS
+   ========================== */
 
-/* ============================================================
+function useHint() {
+    if (hintsLeft <= 0) {
+        alert("No hints left.");
+        return;
+    }
+
+    const cards = Array.from(document.querySelectorAll(".card"));
+    const map = {};
+
+    cards.forEach(card => {
+        if (card.classList.contains("matched")) return;
+        const sym = card.dataset.symbol;
+        if (!map[sym]) map[sym] = [];
+        map[sym].push(card);
+    });
+
+    let pair = null;
+    for (const sym in map) {
+        if (map[sym].length >= 2) {
+            pair = map[sym].slice(0, 2);
+            break;
+        }
+    }
+
+    if (!pair) {
+        alert("No pairs available.");
+        return;
+    }
+
+    hintsLeft--;
+    hintsDisplay.textContent = hintsLeft;
+
+    pair.forEach(c => c.classList.remove("hidden"));
+    setTimeout(() => {
+        pair.forEach(c => {
+            if (!c.classList.contains("matched")) c.classList.add("hidden");
+        });
+    }, 1000);
+}
+
+/* ==========================
    PUZZLE COMPLETED
-   ============================================================ */
+   ========================== */
 
 function onPuzzleCompleted() {
     clearInterval(timerInterval);
     document.getElementById("math-feedback").textContent =
-        "Puzzle completed! Now solve the math challenge.";
+        "Puzzle done! Now answer the math question.";
 }
 
-
-/* ============================================================
+/* ==========================
    TIMER
-   ============================================================ */
+   ========================== */
 
 function startTimer() {
     clearInterval(timerInterval);
-
     timerInterval = setInterval(() => {
         timeLeft--;
         timerDisplay.textContent = timeLeft;
-
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
             lockBoard = true;
@@ -332,24 +389,67 @@ function startTimer() {
     }, 1000);
 }
 
+/* ==========================
+   SAVE SCORE
+   ========================== */
 
-/* ============================================================
-   LEADERBOARD DISPLAY (No date)
-   ============================================================ */
+function saveScoreToServer() {
+    const guestFlag = (typeof IS_GUEST === "undefined") ? true : IS_GUEST;
+    if (guestFlag) {
+        console.log("Guest: score not saved.");
+        return;
+    }
+
+    const diff = difficultySelect.value;
+    const timeUsed = initialTime - timeLeft;
+    const safeTime = timeUsed >= 0 ? timeUsed : 0;
+
+    fetch("save_score.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            score: score,
+            time:  safeTime,
+            difficulty: diff
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            console.log("Score saved.");
+            loadLeaderboard();
+        } else {
+            console.error("Save score error:", data);
+        }
+    })
+    .catch(err => console.error("Save score failed:", err));
+}
+
+/* ==========================
+   LEADERBOARD
+   ========================== */
 
 async function loadLeaderboard() {
+    const diff = difficultySelect.value;
+
     try {
-        const diff = difficultySelect.value;
-        const response = await fetch("get_leaderboard.php?difficulty=" + diff);
-        const data = await response.json();
+        const res  = await fetch("get_leaderboard.php?difficulty=" + encodeURIComponent(diff));
+        const data = await res.json();
 
-        const list = document.getElementById("leaderboard");
-        list.innerHTML = "";
+        const tbody = document.getElementById("leaderboard-body");
+        if (!tbody) return;
 
-        data.forEach(row => {
-            const li = document.createElement("li");
-            li.textContent = `${row.username}: ${row.score} pts — ${row.time_taken}s`;
-            list.appendChild(li);
+        tbody.innerHTML = "";
+
+        data.forEach((row, index) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${row.username}</td>
+                <td>${row.score}</td>
+                <td>${row.time_taken}</td>
+            `;
+            tbody.appendChild(tr);
         });
 
     } catch (err) {
@@ -357,9 +457,10 @@ async function loadLeaderboard() {
     }
 }
 
-
-/* ============================================================
+/* ==========================
    INITIAL LOAD
-   ============================================================ */
+   ========================== */
 
-document.addEventListener("DOMContentLoaded", loadLeaderboard);
+document.addEventListener("DOMContentLoaded", () => {
+    loadLeaderboard();
+});
