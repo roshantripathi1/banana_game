@@ -1,6 +1,4 @@
-/* ==========================
-   GLOBAL STATE
-   ========================== */
+
 // Feature branch: easy-math version update
 
 // Cards
@@ -19,7 +17,7 @@ let timeLeft = 0;
 let initialTime = 0;
 
 // Hints
-let hintsLeft = 0;
+let hintsLeft = 5;
 
 // Math
 let correctMathAnswer = null; // only one answer now
@@ -341,8 +339,8 @@ function useHint() {
 
     let pair = null;
     for (const sym in map) {
-        if (map[sym].length >= 2) {
-            pair = map[sym].slice(0, 2);
+        if (map[sym].length >= 5) {
+            pair = map[sym].slice(0, 5);
             break;
         }
     }
