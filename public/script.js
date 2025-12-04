@@ -1,6 +1,7 @@
 /* ==========================
    GLOBAL STATE
    ========================== */
+// Feature branch: easy-math version update
 
 // Cards
 let firstCard = null;
